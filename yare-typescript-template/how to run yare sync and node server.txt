@@ -1,0 +1,5 @@
+node js server start:
+node src/server.js
+
+yare sync start:
+yarn build -w -s
