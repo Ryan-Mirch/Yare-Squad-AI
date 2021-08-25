@@ -8,20 +8,20 @@ setStars()
 var RallyPositionData = []
 updateRallyPositionData()
 
-var Squad0Data = [4, "PokeEnemyBase"]
-var Squad1Data = [0, "PokeEnemyBase"]
+var Squad0Data = [1, "HarvestHome"]
+var Squad1Data = [1, "HarvestOutpost"]
 var Squad2Data = [1, "PokeEnemyBase"]
-var Squad3Data = [0, "DefendOutpost"]
-var Squad4Data = [0, "RushEnemyStar"]
-var Squad5Data = [0, "HarvestOutpost"]
+var Squad3Data = [1, "AttackEnemyStar"]
+var Squad4Data = [0, "AttackEnemyBase"]
+var Squad5Data = [0, "AttackEnemyBase"]
 var Squad6Data = [0, "HarvestHome"]
-var Squad7Data = [0, "HarvestHome"]
-var Squad8Data = [0, "HarvestHome"]
+var Squad7Data = [0, "AttackEnemyBase"]
+var Squad8Data = [0, "AttackEnemyBase"]
 var Squad9Data = "PokeEnemyBase"
 
-var chainMinHealth = 0
+var chainMinHealth = 90
 var gatherMinHealth = 0
- 
+
 
 /* AI's */
 //HARVEST   HarvestHome         HarvestOutpost 
@@ -38,13 +38,7 @@ var gatherMinHealth = 0
 
 
 /*TODO
-
-| AI'S |
-- Rally
-    - safe rally and aggro rally
-
-- Rush - moves to the star, jumps if needed. Only attacks if it isnt being attacked or if energy is > 50
-    - Enemy Star, Outpost Star
+ 
 */
 
 
@@ -1080,7 +1074,7 @@ function rushEnemyStarAI() {
                 s.energize(s)
             }
 
-            if(getEnemiesInRange(s, 400).length == 0 ){
+            if(getEnemiesInRange(s, 400).length == 0 && s.energy > energyCapacity*.5){
                 s.move(positionOnLine(enemy_base.position,s.position,199))
                 s.energize(enemy_base)
             }
