@@ -1,27 +1,11 @@
-import position from "./position.json";
 
-var HomeStar = star_zxq
-var EnemyStar = star_a1c
-var OutpostStar = star_p89
-setStars()
 
-var RallyPositionData = []
-updateRallyPositionData()
 
-var Squad0Data = [1, "HarvestHome"]
-var Squad1Data = [1, "HarvestOutpost"]
-var Squad2Data = [1, "PokeEnemyBase"]
-var Squad3Data = [1, "AttackEnemyStar"]
-var Squad4Data = [0, "AttackEnemyBase"]
-var Squad5Data = [0, "AttackEnemyBase"]
-var Squad6Data = [0, "HarvestHome"]
-var Squad7Data = [0, "AttackEnemyBase"]
-var Squad8Data = [0, "AttackEnemyBase"]
-var Squad9Data = "PokeEnemyBase"
 
-var chainMinHealth = 90
-var gatherMinHealth = 0
-
+var defaultChainHealth = 90
+var defaultGatherHealth = 10
+var defaultQuantities = [   1,              1,              1,              0,              0,              0,              0,              0,              0]
+var defaultAIs =        [   "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome", "HarvestHome"]
 
 /* AI's */
 //HARVEST   HarvestHome         HarvestOutpost 
@@ -31,27 +15,107 @@ var gatherMinHealth = 0
 //POKE      PokeEnemyBase       PokeEnemyStar
 //RUSH      RushEnemyStar       RushOutpostStar
 
-/* Openings
 
 
-*/
+{
+    let UIChan = channels.get('UI');
+    if(!memory["uistate"])memory["uistate"] = {}
+    var UIState = memory["uistate"]
+    let idkey = 0;
+    let group = [];
+    let stack = [group];
+    var UI = {
+        done() {
+            UIChan.send(group);
+        },
+        button(name, {key = name} = {}) {
+            stack[0].push({t: 'button', name, key});
+            old = UIState[key];
+            UIState[key] = false;
+            return old;
+        },
+        toggle(name, {key = name, def = false} = {}) {
+            let val = UIState[key] ?? def;
+            stack[0].push({t: 'toggle', name, key, val});
+            return val;
+        },
+        line() {
+            stack[0].push({t: 'line', key: idkey++});
+        },
+        separator() {
+            stack[0].push({t: 'separator', key: idkey++});
+        },
+        field(key, {def = ''} = {}) {
+            let val = UIState[key] ?? def;
+            stack[0].push({t: 'field', key, val});
+            return val;
+        },
+        label(label) {
+            stack[0].push({t: 'label', label: label, key: idkey++});
+        },
+        range(key, min, max, {def = min} = {}) {
+            let val = UIState[key] ?? def;
+            stack[0].push({t: 'range', min, max, key, val});
+            return val;
+        },
+        select(key, options, {def} = {}) {
+            let val = UIState[key] ?? def;
+            if(Array.isArray(options)) {
+                options = Object.fromEntries(options.map(opt => ([opt, opt])));
+            }
+            stack[0].push({t: 'select', options, key, val});
+            return val;
+        },
+        pickSpot(name, {key = name} = {}) {
+            stack[0].push({t: 'pickSpot', name, key});
+            return UIState[key];
+        },
+        beginCol({grow = false} = {}) {
+            let newCol = [];
+            stack[0].push({t: 'col', items: newCol, key: idkey++, grow});
+            stack.unshift(newCol);
+        },
+        endCol() {
+            stack.shift();
+        }
+    }
+    let data = channels.recv('UI');
+    if(data) {
+        for(var d of data) {
+            UIState[d.key] = d.value;
+        }
+    }
+}
 
-
-/*TODO
- 
-*/
-
-
-/* constants */
-var MarkCounts = [0,0,0,0,0,0,0,0,0,0]
-var SquadTargets = [Squad0Data[0],Squad1Data[0],Squad2Data[0],Squad3Data[0],Squad4Data[0],Squad5Data[0],Squad6Data[0],Squad7Data[0],Squad8Data[0],999]
-var SquadAI = [Squad0Data[1],Squad1Data[1],Squad2Data[1],Squad3Data[1],Squad4Data[1],Squad5Data[1],Squad6Data[1],Squad7Data[1],Squad8Data[1],Squad9Data]
-var start = new Date()
+var SquadQuantities = []
+var SquadAIs = []
+var SquadRallyPositions = []
+var ChainHealth = 0
 let energyCapacity = my_spirits[0].energy_capacity
+let size = my_spirits[0].size
 
+
+
+memory["uistate"] = UIState
+
+var HomeStar = star_zxq
+var EnemyStar = star_a1c
+var OutpostStar = star_p89
+setStars()
+
+var chainMinHealth = 0
+var gatherMinHealth = 0
+
+var MarkCounts = [0,0,0,0,0,0,0,0,0,0]
+if(!memory["markcounts"])memory["markcounts"] = MarkCounts
+var start = new Date()
+
+createUI()
 clearTargets()
 assignSquads()
 updateMarkCounts()
+
+updateRallyPositionData()
 
 harvestAI()
 
@@ -74,20 +138,60 @@ spiritShout()
 
 
 
+function createUI() {
+    UI.label("Chain Health");
+    chainMinHealth = UI.range("chainhealth", 0, energyCapacity - size,{ def: defaultChainHealth })
+    UI.separator()
+    UI.label("Gather Health");
+    gatherMinHealth = UI.range("gatherhealth", 0, energyCapacity - size,{ def: defaultGatherHealth })
+    UI.separator()
+    for (let i = 0; i < 10; i++) {
+
+        UI.beginCol();
+        UI.label("Squad " + i);
+        UI.endCol();
+
+        UI.beginCol();
+        UI.label(memory["markcounts"][i] + " / ")
+        UI.endCol();
+
+        if (i < 9) {
+            UI.beginCol();
+            SquadQuantities[i] = UI.field("quantity" + i, { def: defaultQuantities[i] })
+            UI.endCol();
+        }
+
+        UI.beginCol();
+        SquadAIs[i] = UI.select("ai" + i, ["HarvestHome", "HarvestOutpost",
+            "DefendBase", "DefendHomeStar", "DefendOutpost",
+            "AttackEnemyBase", "AttackEnemyStar",
+            "SafeRallyPoint1", "AggroRallyPoint1",
+            "PokeEnemyBase", "PokeEnemyStar",
+            "RushEnemyStar", "RushOutpostStar"], { def: defaultAIs[i] })
+        UI.endCol();
+
+        SquadRallyPositions[i] = UI.pickSpot("Rally Pos" + i)
+
+        if (i < 9) {
+            UI.separator();
+        }
+    }
+
+    UI.done();
+}
+
 function spiritShout(){
     for(spirit of my_spirits){
         if(spirit.hp != 0){
             //spirit.shout(String(tick))
-            //spirit.shout(spirit.mark)
-            spirit.shout(memory[spirit.id])
+            spirit.shout(spirit.mark)
+            //spirit.shout(memory[spirit.id])
             //spirit.shout(spirit.id)
             //spirit.shout("Can survive? - " + canSurviveEnemiesInRange(spirit))
             //spirit.shout(getSpiritAI(spirit))
         }
         
     }  
-    
-    console.log("Position: " + position)
     console.log("Squad9: " + MarkCounts[9])
     console.log("Total: " + getAliveFriendlySpirits().length)
     console.log("Tick: " + tick)
@@ -98,15 +202,12 @@ function spiritShout(){
 
 function updateRallyPositionData(){
 
-    
-    memory["rally position" + position[0]] = [position[1], position[2]]
     for(let i = 0; i < 10; i ++){
-        RallyPositionData[i] = memory["rally position" + i]
-        if(RallyPositionData[i] != null){
+        if(SquadRallyPositions[i] != null){
             graphics.style = "white";
-            graphics.circle(RallyPositionData[i], 1);
-            graphics.circle(RallyPositionData[i], 5);
-            drawNumberAtPosition([RallyPositionData[i][0], parseFloat(RallyPositionData[i][1])  + 30], i, "grey", .8)
+            graphics.circle(SquadRallyPositions[i], 1);
+            graphics.circle(SquadRallyPositions[i], 5);
+            drawNumberAtPosition([SquadRallyPositions[i][0], parseFloat(SquadRallyPositions[i][1])  + 30], i, "grey", .8)
         }
         
     }
@@ -578,15 +679,15 @@ function defendHomeStarAI(){
 function rallyAI() {
 
     for (let i = 0; i < 10; i++) {
-        if (SquadAI[i].includes("RallyPoint")) {
+        if (SquadAIs[i].includes("RallyPoint")) {
             let squadSpirits = getSquadSpirits(i)
             
 
-            let rallyPointNumber = SquadAI[i][SquadAI[i].length -1];
-            let aggro = SquadAI[i].includes("Aggro")
+            let rallyPointNumber = SquadAIs[i][SquadAIs[i].length -1];
+            let aggro = SquadAIs[i].includes("Aggro")
 
-            let rallyPoint
-            rallyPoint = RallyPositionData[rallyPointNumber]
+            let rallyPoint = base.position
+            rallyPoint = SquadRallyPositions[i]
 
             for (spirit of squadSpirits) {
                 memory[spirit.id] = "Rallying"
@@ -804,7 +905,7 @@ function pokeEnemyBaseAI() {
 
         //Manage States if Attacking
         if( memory[s.id] == "Attacking"){
-            if(s.energy <= energyCapacity*.2){
+            if(s.energy <= energyCapacity*.1){
                 memory[s.id] = "Recovering"
             }
 
@@ -850,7 +951,7 @@ function pokeEnemyBaseAI() {
             }
 
             //move to enemy base if no enemies are nearby
-            if(getTotalEnergy(getAlliesInRange(enemy_base,200)) < s.energy){
+            if(getTotalEnergy(getAlliesInRange(enemy_base,200)) < s.energy && target == null){
                 s.move(positionOnLine(enemy_base.position, s.position, 199))
             }
 
@@ -1033,7 +1134,7 @@ function rushEnemyStarAI() {
         
         //Actions if Rushing
         if( memory[s.id] == "Rushing"){
-            s.move(rushPoint)
+            moveAvoidOutpost(s,rushPoint)
             graphics.circle(rushPoint,2)
             attackEnemyPreventOverkill(s)
 
@@ -1167,14 +1268,14 @@ function rushOutpostStarAI() {
             if(target == null && s.energy > 20 && outpost.control != "Aecert"){
                 s.energize(outpost)
             }
+            
+            //if not healing, energize star
+            else if(target == null){
+                s.energize(s)
+            }
 
             if(outpost.energy == 0){
                 s.energize(outpost)
-            }
-
-            //if not healing, energize star
-            if(target == null){
-                s.energize(s)
             }
         }
     }
@@ -1183,12 +1284,12 @@ function rushOutpostStarAI() {
 function harvestAI(){   
 
     for (let i = 0; i < 10; i++) {
-        if (["HarvestHome", "HarvestOutpost"].includes(SquadAI[i])) {
+        if (["HarvestHome", "HarvestOutpost"].includes(SquadAIs[i])) {
 
             //set which star is being harvested
             var harvestStar
-            if (SquadAI[i] == "HarvestOutpost") harvestStar = OutpostStar
-            if (SquadAI[i] == "HarvestHome") harvestStar = HomeStar
+            if (SquadAIs[i] == "HarvestOutpost") harvestStar = OutpostStar
+            if (SquadAIs[i] == "HarvestHome") harvestStar = HomeStar
 
             var squadSpirits = getSquadSpirits(i)            
 
@@ -1496,19 +1597,19 @@ function assignSquads(){
         }
     }
 
-    //removes all extra spirits from their squad and puts them in Squad5
+    //removes all extra spirits from their squad and puts them in Squad9
     for (let i = 0; i < 9; i++) {
-        while(Squads[i].length > SquadTargets[i]){
+        while(Squads[i].length > SquadQuantities[i]){
             let removedSpirit = Squads[i].pop()
             Squad9.push(removedSpirit)     
             memory[removedSpirit.id] = "Spawned"       
         }             
     }
 
-    //logic for re-assigning squads from squad5
+    //logic for re-assigning squads from squad9
     
     for (let i = 0; i < 9; i++) {
-        while(Squads[i].length < SquadTargets[i] && Squad9.length > 0){
+        while(Squads[i].length < SquadQuantities[i] && Squad9.length > 0){
             let removedSpirit = Squad9.pop()            
             Squads[i].push(removedSpirit)
         }             
@@ -1620,6 +1721,7 @@ function updateMarkCounts(){
             MarkCounts[i] = MarkCounts[i] + 1 
         }
     }
+    memory["markcounts"] = MarkCounts
 }
 
 function getClosestEnemy(spirit, enemyIDList){
@@ -1876,7 +1978,7 @@ function healAllyGettingAttacked(spirit){
         if(getFirstAttackingEnemy(ally) != null){
             targets.push(ally)
         }
-        else if(ally.energy < spirit.energy && getEnemiesInRange(ally, 300).length > 0){
+        else if(ally.energy < spirit.energy && getEnemiesInRange(ally, 300).length > 0 && distance(s.position,getClosestStar(s).position) > 200){
             targets.push(ally)
         }
     }
@@ -2047,7 +2149,7 @@ function getAISpirits(AI){
 
     var results = []
     for (let i = 0; i < 10; i++) {
-        if(SquadAI[i] == AI){
+        if(SquadAIs[i] == AI){
             for(spirit of getSquadSpirits(String(i))){
                 results.push(spirit)
             }
@@ -2200,7 +2302,7 @@ function getSquadSpirits(m){
 
 function getSpiritAI(spirit){
     for(let i = 0; i < 10; i++){
-        if(getAISpirits(SquadAI[i]).includes(spirit))return SquadAI[i]
+        if(getAISpirits(SquadAIs[i]).includes(spirit))return SquadAIs[i]
     }
 }
 
