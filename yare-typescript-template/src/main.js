@@ -2,10 +2,10 @@
 
 
 
-var defaultChainHealth = 90
-var defaultGatherHealth = 10
+var defaultChainHealth = 0
+var defaultGatherHealth = 0
 var defaultQuantities = [   1,              1,              1,              0,              0,              0,              0,              0,              0]
-var defaultAIs =        [   "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome", "HarvestHome"]
+var defaultAIs =        [   "DefendBase",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome",  "HarvestHome", "HarvestHome"]
 
 /* AI's */
 //HARVEST   HarvestHome         HarvestOutpost 
@@ -293,10 +293,6 @@ function defendBaseAI(){
             if(!canSurviveEnemiesInRange(s) || (enemyToChase == null && s.energy < energyCapacity*.9)){
                 memory[s.id] = "Recovering"
             }
-
-            if(energyCapacity == 10 && s.energy > 1){
-                memory[s.id] = "Attacking"
-            }
         }
 
         //Manage States if Attacking
@@ -311,6 +307,9 @@ function defendBaseAI(){
         }
 
         if( memory[s.id] == "Recovering"){
+            if(energyCapacity == 10){
+                attackEnemyPreventOverkill(s)
+            }
             if(!isBeingHealed(s)){
                 moveAvoidOutpost(s, recoverPoint)
                 s.energize(s)
@@ -877,14 +876,10 @@ function pokeEnemyBaseAI() {
         var attackPoint = positionOnLine(enemy_base.position, EnemyStar.position, -399)
         if(outpost.control == "Aecert" || outpost.energy == 0){
             attackPoint = positionOnLine(enemy_base.position, OutpostStar.position, 350)
-
-            if(outpost.energy >= 500){
-                attackPoint = positionOnLine(outpost.position, enemy_base.position, 399)
-            }
         }
 
-        //if outpost has energy, make every 4th poker a healer
-        if(index == 2 || index == 6 || index == 10 || index == 14){
+        //if outpost has energy, make every 3rd poker a healer
+        if(index + 2 % 3 == 0){
             if(OutpostStar.energy > 0){
                 attackPoint = positionOnLine(OutpostStar.position, attackPoint, 199)
             }            
@@ -943,12 +938,20 @@ function pokeEnemyBaseAI() {
                 s.move(positionOnLine(target.position, s.position, 199))
             }
             if(target == null){
-                target =healAllyGettingAttacked(s)
+                target = healAllyGettingAttacked(s)
+            }
+
+            if(index + 2 % 3 == 0){
+                if(OutpostStar.energy > 0){
+                    target = healAllyPreventOverHeal(s)
+                }            
             }
 
             if(target == null){
                 s.energize(s)
             }
+
+            
 
             //move to enemy base if no enemies are nearby
             if(getTotalEnergy(getAlliesInRange(enemy_base,200)) < s.energy && target == null){
@@ -1300,209 +1303,169 @@ function harvestAI(){
                 }
             }
 
-            // 1 s At Base - Just go back and forth
-            if (MarkCounts[i] == 1) {
-                let gatherSpirit = squadSpirits[0]
-                //initialize
-                if (!["Defending", "Recovering", "Depositing", "Gathering"].includes(memory[gatherSpirit.id])) {
-                    memory[gatherSpirit.id] = "Depositing"
-                }
-
-                //Depositing
-                if (memory[gatherSpirit.id] == "Depositing") {
-                    gatherSpirit.energize(base)
-                    moveAvoidOutpost(gatherSpirit, positionOnLine(base.position, harvestStar.position, 199))
-
-                    if (gatherSpirit.energy <= gatherMinHealth) {
-                        memory[gatherSpirit.id] = "Gathering"
-                    }
-                }
-
-                //Gathering
-                if (memory[gatherSpirit.id] == "Gathering") {
-                    gatherSpirit.energize(gatherSpirit)
-                    moveAvoidOutpost(gatherSpirit, positionOnLine(harvestStar.position, base.position, 199))
-
-                    if (gatherSpirit.energy == gatherSpirit.energy_capacity) {
-                        memory[gatherSpirit.id] = "Depositing"
-                    }
-                }
-            }
-
-            // 2 Spirits At Base - 1 gathers, the other starts the chain
-            if (MarkCounts[i] == 2) {
-                let chainSpirit = squadSpirits[1]
-                if (!["Defending", "Recovering"].includes(memory[chainSpirit.id])) {
-                    moveAvoidOutpost(chainSpirit, positionOnLine(base.position, harvestStar.position, 199))
-                    if (chainSpirit.energy >= chainMinHealth) chainSpirit.energize(base)
-                    memory[chainSpirit.id] = "Chaining"
-                }
-
-                let gatherSpirit = squadSpirits[0]
-                if (!["Defending", "Recovering", "Depositing", "Gathering"].includes(memory[gatherSpirit.id])) {
-                    memory[gatherSpirit.id] = "Depositing"
-                }
-
-                //Depositing
-                if (memory[gatherSpirit.id] == "Depositing") {
-                    if (chainSpirit.energy <= energyCapacity*.9) {
-                        gatherSpirit.energize(chainSpirit)
-                    }            
-                    moveAvoidOutpost(gatherSpirit, positionOnLine(chainSpirit.position, harvestStar.position, 199)) 
-
-                    if (gatherSpirit.energy <= gatherMinHealth) {
-                        memory[gatherSpirit.id] = "Gathering"
-                    }
-                }
-
-                //Gathering
-                if (memory[gatherSpirit.id] == "Gathering") {
-                    gatherSpirit.energize(gatherSpirit)
-                    moveAvoidOutpost(gatherSpirit, positionOnLine(harvestStar.position, chainSpirit.position, 199))
-
-                    if (gatherSpirit.energy == gatherSpirit.energy_capacity) {
-                        memory[gatherSpirit.id] = "Depositing"
-                    }
-                }
-            }
-
-            // 3 Spirits At Base - 1 gathers, the other 2 make the chain
-            if (MarkCounts[i] == 3) {
-                let chainSpirit1 = squadSpirits[2]
-                let chainDistance = 150
-                if (!["Defending", "Recovering"].includes(memory[chainSpirit1.id])) {
-                    moveAvoidOutpost(chainSpirit1, positionOnLine(base.position, harvestStar.position, chainDistance))
-                    if (chainSpirit1.energy >= chainMinHealth) chainSpirit1.energize(base)
-                    memory[chainSpirit1.id] = "Chaining"
-                }
-
-                let chainSpirit2 = squadSpirits[1]
-                chainDistance += 199
-                if (!["Defending", "Recovering"].includes(memory[chainSpirit2.id])) {
-                    moveAvoidOutpost(chainSpirit2, positionOnLine(base.position, harvestStar.position, chainDistance))
-                    if (chainSpirit2.energy >= chainMinHealth && chainSpirit1.energy <= energyCapacity*.9) chainSpirit2.energize(chainSpirit1)
-                    memory[chainSpirit2.id] = "Chaining"
-                }
-
-
-                let gatherSpirit = squadSpirits[0]
-                chainDistance += 199
-                if (!["Defending", "Recovering", "Depositing", "Gathering"].includes(memory[gatherSpirit.id])) {
-                    memory[gatherSpirit.id] = "Depositing"
-                }
-
-                //Depositing
-                if (memory[gatherSpirit.id] == "Depositing") {
-                    moveAvoidOutpost(gatherSpirit, positionOnLine(base.position, harvestStar.position, chainDistance))
-                    if (chainSpirit2.energy <= energyCapacity*.9) gatherSpirit.energize(chainSpirit2)
-
-                    if (gatherSpirit.energy <= chainMinHealth) {
-                        memory[gatherSpirit.id] = "Gathering"
-                    }
-                }
-
-                //Gathering
-                if (memory[gatherSpirit.id] == "Gathering") {
-                    moveAvoidOutpost(gatherSpirit, positionOnLine(base.position, harvestStar.position, chainDistance))
-                    if (harvestStar.energy > 150 || energyCapacity < 100) {
-                        gatherSpirit.energize(gatherSpirit)
-                    }
-
-
-                    if (gatherSpirit.energy >= energyCapacity*.9) {
-                        memory[gatherSpirit.id] = "Depositing"
-                    }
-                }
-            }
-
-            // 4 Spirits At Base - 2 gather, the other 2 make the chain
-            if (MarkCounts[i] >= 4 && energyCapacity >= 30) {
-                let chainSpirit1 = squadSpirits[3]
-                let chainDistance = 150
-                if (!["Defending", "Recovering"].includes(memory[chainSpirit1.id])) {
-                    moveAvoidOutpost(chainSpirit1, positionOnLine(base.position, harvestStar.position, chainDistance))
-                    if (chainSpirit1.energy >= chainMinHealth) chainSpirit1.energize(base)
-                    memory[chainSpirit1.id] = "Chaining"
-                }
-
-                chainDistance += 199
-                let chainSpirit2 = squadSpirits[2]
-                if (!["Defending", "Recovering"].includes(memory[chainSpirit1.id])) {
-                    moveAvoidOutpost(chainSpirit2, positionOnLine(base.position, harvestStar.position, chainDistance))
-                    if (chainSpirit2.energy >= chainMinHealth && chainSpirit1.energy <= energyCapacity*.9) chainSpirit2.energize(chainSpirit1)
-                    memory[chainSpirit2.id] = "Chaining"
-                }
-
-                let gatherSpirit = squadSpirits[1]
-                let gatherSpirit2 = squadSpirits[0]
-                chainDistance += 199
-
-                if (!["Defending", "Recovering"].includes(memory[gatherSpirit.id])) {
-                    moveAvoidOutpost(gatherSpirit, positionOnLine(base.position, harvestStar.position, chainDistance))
-
-                    if (tick % 2 == 0) {
-                        if (gatherSpirit.energy > energyCapacity*.7 && chainSpirit2.energy <= energyCapacity*.9) gatherSpirit.energize(chainSpirit2)
-                        memory[gatherSpirit.id] = "Depositing"
-                    }
-                    else {
-                        if (harvestStar.energy > 350 || energyCapacity < 100) {
-                            gatherSpirit.energize(gatherSpirit)
-                        }
-                        memory[gatherSpirit.id] = "Gathering"
-                    }
-                }
-
-                if (!["Defending", "Recovering"].includes(memory[gatherSpirit2.id])) {
-                    moveAvoidOutpost(gatherSpirit2, positionOnLine(base.position, harvestStar.position, chainDistance))
-
-                    if (tick % 2 != 0) {
-                        if (gatherSpirit2.energy > energyCapacity*.7 && chainSpirit2.energy <= energyCapacity*.9) gatherSpirit2.energize(chainSpirit2)
-                        memory[gatherSpirit2.id] = "Depositing"
-                    }
-                    else {
-                        if (harvestStar.energy > 700 || energyCapacity < 100) {
-                            gatherSpirit2.energize(gatherSpirit2)
-                        }
-                        memory[gatherSpirit2.id] = "Gathering"
-                    }
-                }
-            }
-
-            // >4 Spirits At Base - the rest haul normally
-            if (MarkCounts[i] > 4) {
-                let startingIndex = 4
-                if(energyCapacity == 10)startingIndex = 0
-
-                for (let j = startingIndex; j < MarkCounts[i]; j++) {
+            for(let j = 0; j < squadSpirits.length; j+=4){
+                // 1 Spirit - Just go back and forth
+                if (j+1 == squadSpirits.length) {
                     let gatherSpirit = squadSpirits[j]
+                    //initialize
                     if (!["Defending", "Recovering", "Depositing", "Gathering"].includes(memory[gatherSpirit.id])) {
                         memory[gatherSpirit.id] = "Depositing"
                     }
-
+    
                     //Depositing
                     if (memory[gatherSpirit.id] == "Depositing") {
                         gatherSpirit.energize(base)
-
                         moveAvoidOutpost(gatherSpirit, positionOnLine(base.position, harvestStar.position, 199))
-
+    
                         if (gatherSpirit.energy <= gatherMinHealth) {
                             memory[gatherSpirit.id] = "Gathering"
                         }
                     }
-
+    
                     //Gathering
                     if (memory[gatherSpirit.id] == "Gathering") {
-                        if (harvestStar.energy > 900 || energyCapacity < 100) {
-                            gatherSpirit.energize(gatherSpirit)
-                        }
-
-
-                        if (distance(gatherSpirit.position, harvestStar.position) > 200) {
-                            moveAvoidOutpost(gatherSpirit, harvestStar.position)
-                        }
-
+                        gatherSpirit.energize(gatherSpirit)
+                        moveAvoidOutpost(gatherSpirit, positionOnLine(harvestStar.position, base.position, 199))
+    
                         if (gatherSpirit.energy == gatherSpirit.energy_capacity) {
                             memory[gatherSpirit.id] = "Depositing"
+                        }
+                    }
+                }
+
+                 // 2 Spirits - 1 gathers, the other starts the chain
+                if (j+2 == squadSpirits.length) {
+                    let chainSpirit = squadSpirits[j+1]
+                    if (!["Defending", "Recovering"].includes(memory[chainSpirit.id])) {
+                        moveAvoidOutpost(chainSpirit, positionOnLine(base.position, harvestStar.position, 199))
+                        if (chainSpirit.energy >= chainMinHealth) chainSpirit.energize(base)
+                        memory[chainSpirit.id] = "Chaining"
+                    }
+    
+                    let gatherSpirit = squadSpirits[j]
+                    if (!["Defending", "Recovering", "Depositing", "Gathering"].includes(memory[gatherSpirit.id])) {
+                        memory[gatherSpirit.id] = "Depositing"
+                    }
+    
+                    //Depositing
+                    if (memory[gatherSpirit.id] == "Depositing") {
+                        if (chainSpirit.energy <= energyCapacity*.9) {
+                            gatherSpirit.energize(chainSpirit)
+                        }            
+                        moveAvoidOutpost(gatherSpirit, positionOnLine(chainSpirit.position, harvestStar.position, 199)) 
+    
+                        if (gatherSpirit.energy <= gatherMinHealth) {
+                            memory[gatherSpirit.id] = "Gathering"
+                        }
+                    }
+    
+                    //Gathering
+                    if (memory[gatherSpirit.id] == "Gathering") {
+                        gatherSpirit.energize(gatherSpirit)
+                        moveAvoidOutpost(gatherSpirit, positionOnLine(harvestStar.position, chainSpirit.position, 199))
+    
+                        if (gatherSpirit.energy == gatherSpirit.energy_capacity) {
+                            memory[gatherSpirit.id] = "Depositing"
+                        }
+                    }
+                }
+                // 3 Spirits - 1 gathers, the other 2 make the chain
+                if (j+3 == squadSpirits.length){
+                    let chainSpirit1 = squadSpirits[j+2]
+                    let chainDistance = 150
+                    if (!["Defending", "Recovering"].includes(memory[chainSpirit1.id])) {
+                        moveAvoidOutpost(chainSpirit1, positionOnLine(base.position, harvestStar.position, chainDistance))
+                        if (chainSpirit1.energy >= chainMinHealth) chainSpirit1.energize(base)
+                        memory[chainSpirit1.id] = "Chaining"
+                    }
+    
+                    let chainSpirit2 = squadSpirits[j+1]
+                    chainDistance += 199
+                    if (!["Defending", "Recovering"].includes(memory[chainSpirit2.id])) {
+                        moveAvoidOutpost(chainSpirit2, positionOnLine(base.position, harvestStar.position, chainDistance))
+                        if (chainSpirit2.energy >= chainMinHealth && chainSpirit1.energy <= energyCapacity*.9) chainSpirit2.energize(chainSpirit1)
+                        memory[chainSpirit2.id] = "Chaining"
+                    }
+    
+    
+                    let gatherSpirit = squadSpirits[j]
+                    chainDistance += 199
+                    if (!["Defending", "Recovering", "Depositing", "Gathering"].includes(memory[gatherSpirit.id])) {
+                        memory[gatherSpirit.id] = "Depositing"
+                    }
+    
+                    //Depositing
+                    if (memory[gatherSpirit.id] == "Depositing") {
+                        moveAvoidOutpost(gatherSpirit, positionOnLine(base.position, harvestStar.position, chainDistance))
+                        if (chainSpirit2.energy <= energyCapacity*.9) gatherSpirit.energize(chainSpirit2)
+    
+                        if (gatherSpirit.energy <= chainMinHealth) {
+                            memory[gatherSpirit.id] = "Gathering"
+                        }
+                    }
+    
+                    //Gathering
+                    if (memory[gatherSpirit.id] == "Gathering") {
+                        moveAvoidOutpost(gatherSpirit, positionOnLine(base.position, harvestStar.position, chainDistance))
+                        if (harvestStar.energy > 150 || energyCapacity < 100) {
+                            gatherSpirit.energize(gatherSpirit)
+                        }
+    
+    
+                        if (gatherSpirit.energy >= energyCapacity*.9) {
+                            memory[gatherSpirit.id] = "Depositing"
+                        }
+                    }
+                }
+                // 4 Spirits - 2 gather, the other 2 make the chain
+                if (j+4 <= squadSpirits.length){
+                    let chainSpirit1 = squadSpirits[j+3]
+                    let chainDistance = 150
+                    if (!["Defending", "Recovering"].includes(memory[chainSpirit1.id])) {
+                        moveAvoidOutpost(chainSpirit1, positionOnLine(base.position, harvestStar.position, chainDistance))
+                        if (chainSpirit1.energy >= chainMinHealth) chainSpirit1.energize(base)
+                        memory[chainSpirit1.id] = "Chaining"
+                    }
+    
+                    chainDistance += 199
+                    let chainSpirit2 = squadSpirits[j+2]
+                    if (!["Defending", "Recovering"].includes(memory[chainSpirit1.id])) {
+                        moveAvoidOutpost(chainSpirit2, positionOnLine(base.position, harvestStar.position, chainDistance))
+                        if (chainSpirit2.energy >= chainMinHealth && chainSpirit1.energy <= energyCapacity*.9) chainSpirit2.energize(chainSpirit1)
+                        memory[chainSpirit2.id] = "Chaining"
+                    }
+    
+                    let gatherSpirit = squadSpirits[j+1]
+                    let gatherSpirit2 = squadSpirits[j]
+                    chainDistance += 199
+    
+                    if (!["Defending", "Recovering"].includes(memory[gatherSpirit.id])) {
+                        moveAvoidOutpost(gatherSpirit, positionOnLine(base.position, harvestStar.position, chainDistance))
+    
+                        if (tick % 2 == 0) {
+                            if (gatherSpirit.energy > energyCapacity*.7 && chainSpirit2.energy <= energyCapacity*.9) gatherSpirit.energize(chainSpirit2)
+                            memory[gatherSpirit.id] = "Depositing"
+                        }
+                        else {
+                            if (harvestStar.energy > 350 || energyCapacity < 100) {
+                                gatherSpirit.energize(gatherSpirit)
+                            }
+                            memory[gatherSpirit.id] = "Gathering"
+                        }
+                    }
+    
+                    if (!["Defending", "Recovering"].includes(memory[gatherSpirit2.id])) {
+                        moveAvoidOutpost(gatherSpirit2, positionOnLine(base.position, harvestStar.position, chainDistance))
+    
+                        if (tick % 2 != 0) {
+                            if (gatherSpirit2.energy > energyCapacity*.7 && chainSpirit2.energy <= energyCapacity*.9) gatherSpirit2.energize(chainSpirit2)
+                            memory[gatherSpirit2.id] = "Depositing"
+                        }
+                        else {
+                            if (harvestStar.energy > 700 || energyCapacity < 100) {
+                                gatherSpirit2.energize(gatherSpirit2)
+                            }
+                            memory[gatherSpirit2.id] = "Gathering"
                         }
                     }
                 }
